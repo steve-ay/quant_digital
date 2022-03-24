@@ -16,6 +16,7 @@ class binanceserver(object):
 		self.logger.info('=================================binance data server============================')
 		self.instruments=json.loads(cf.get('config','instruments'))
 
+		#open a zmq to broadcast quote for all program on this computer,the port is 30000
 		context = zmq.Context()
 		self.socket = context.socket(zmq.PUB)
 		self.socket.bind("tcp://*:30000")
@@ -54,6 +55,7 @@ class binanceserver(object):
 						path='data/binance#%s@kline_%s.csv'%(ins,gral)
 						lasttime=0
 						if os.path.exists(path):
+							#read the last timestamp on exist file
 							cmd = "tail -n 1 %s"%path
 							f = os.popen(cmd)
 							txt = f.readline()
@@ -62,12 +64,14 @@ class binanceserver(object):
 						f=open(path,'a')
 						for row in data:
 							if int(row[0])>lasttime and row!=data[-1]:
+								#save kbar quote
 								f.write('%s,%s,%s,%s,%s,%s\n'%(row[0],row[1],row[2],row[3],row[4],row[5]))
 							lastk['%s@kline_%s'%(ins,gral)]={'stream': '%s@kline_%s'%(ins,gral), 'data': [row]}
 						self.logger.info('%s,%s,%s,%s'%(ins,gral,lastk['%s@kline_%s'%(ins,gral)],len(data)))
 						f.close()
 						break
 		ws = None
+		#get the subscribe url
 		st=''
 		for ins in self.instruments[tp]:
 			st+='/%s@depth5'%ins
@@ -92,14 +96,17 @@ class binanceserver(object):
 					if 'stream' in data:
 						if '@depth5' in data['stream']:
 							if data['data']['e']=='depthUpdate':
+								#format and broadcast depth data
 								newdata={'stream':data['stream'],'data':[{'bids':data['data']['b'],'asks':data['data']['a'],'ts':int(data['data']['E']),'instrument_id':data['data']['s'].lower()}]}
 								self.socket.send_string(json.dumps(newdata))
 						elif '@kline' in data['stream']:
 							canins=data['stream']
 							if 'data' in data and lastk[canins]['data'][0][0]!=data['data']['k']['t']:
+								#format and broadcast kbar data
 								self.socket.send_string(json.dumps(lastk[canins]))
 								self.logger.info('push new->%s'%lastk[canins])
-								path='data/binance#%s.csv'%canins
+								#save kbar data
+								path='data/binance#%s.csv'%canins								
 								f=open(path,'a')
 								f.write('%s,%s,%s,%s,%s,%s\n'%(lastk[canins]['data'][0][0],lastk[canins]['data'][0][1],lastk[canins]['data'][0][2],lastk[canins]['data'][0][3],lastk[canins]['data'][0][4],lastk[canins]['data'][0][5]))
 								f.close()
